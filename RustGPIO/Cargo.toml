@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-wiringpi = { version = "0.2", features = ["orangepi"] }
+gpio = "0.4"  # Check for the latest version on crates.io
+ctrlc = "3.2" 

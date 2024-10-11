@@ -1,33 +1,41 @@
-
-use std::time::Duration;
-use std::thread;
-
-
+use gpio::{GpioIn, GpioOut};
+use std::{thread, time, sync::mpsc};
+use ctrlc;
 
 fn main() {
-    // Setup wiringPi in GPIO mode
-    let pi = wiringpi::setup_gpio();
+    let mut gpio35 = gpio::sysfs::SysFsGpioInput::open(35).expect("Failed to open GPIO23");
+    let mut gpio24 = gpio::sysfs::SysFsGpioOutput::open(24).expect("Failed to open GPIO24");
 
-    // Set pin 24 as input for the button
-    let button = pi.input_pin(24);
+    let (tx, rx) = mpsc::channel();
 
-    // Track the button state
-    let mut last_state = button.digital_read();  // Get the initial state
+    // Handle Ctrl+C for graceful shutdown
+    ctrlc::set_handler(move || {
+        let _ = tx.send(());  // Send shutdown signal
+    }).expect("Error setting Ctrl-C handler");
 
-    loop {
-        // Read the current state of the button
-        let current_state = button.digital_read();
-
-        // Check if the button was pressed (changed from LOW to HIGH)
-        if current_state == wiringpi::pin::Value::High && last_state == wiringpi::pin::Value::Low {
-            // Button was pressed, toggle a print statement
-            println!("Button pressed! Toggling action...");
+    // Toggle GPIO24 in a background thread
+    thread::spawn(move || {
+        let mut value = false;
+        loop {
+            gpio24.set_value(value).expect("Could not set gpio24");
+            thread::sleep(time::Duration::from_secs(1));
+            value = !value;
         }
+    });
 
-        // Update the last state to the current state
-        last_state = current_state;
-
-        // Small delay to debounce the button
-        thread::sleep(Duration::from_millis(50));
+    // Main loop to read GPIO23
+    loop {
+        match gpio35.read_value() {
+            Ok(value) => println!("GPIO35: {:?}", value),
+            Err(e) => eprintln!("Error reading GPIO35: {}", e),
+        }
+        thread::sleep(time::Duration::from_millis(100));
+        
+        // Check for shutdown signal
+        if let Ok(_) = rx.try_recv() {
+            break;
+        }
     }
+
+    println!("Shutting down...");
 }
